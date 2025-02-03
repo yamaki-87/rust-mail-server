@@ -1,0 +1,17 @@
+[package]
+name = "rust-mail-server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.95"
+base64 = "0.22.1"
+chrono = "0.4.39"
+env_logger = "0.11.6"
+log = "0.4.25"
+tokio = {version = "1.43.0", features = ["full"]}
+rumbok = {git="https://github.com/yamaki-87/rulibs.git", branch = "main"}
+htmlescape = "0.3.1"
+warp = "0.3.7"
+serde = { version = "1.0.217", features = ["derive"] }
+serde_json = "1.0.138"

@@ -1,0 +1,9 @@
+pub const HELO: &str = "HELO";
+pub const EHLO: &str = "EHLO";
+pub const MAILFROM: &str = "MAIL FROM:";
+pub const RCPTTO: &str = "RCPT TO:";
+pub const DATA: &str = "DATA";
+pub const QUIT: &str = "QUIT";
+pub const AUTH_PLAIN: &str = "AUTH PLAIN";
+pub const AUTH_REQUIRED_MESSAGE_BYTES: &[u8] = b"530 Authentication required\r\n";
+pub const OK_MESSAGE_BYTES: &[u8] = b"250 Ok\r\n";
