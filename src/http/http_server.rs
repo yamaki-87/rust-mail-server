@@ -1,11 +1,21 @@
 use anyhow::Result;
+use futures::{SinkExt, StreamExt};
 use log::info;
+use tokio::sync::broadcast;
 use warp::Filter;
 
-use crate::{email::Email, EmailStore};
+use crate::{
+    email::{EmailSummary, SearchQuery},
+    EmailStore,
+};
+
+use super::http_html_service::HtmlData;
 
 /// HTTP サーバーを起動して、受信メールを Web 画面で表示する関数
-pub async fn run_http_server(email_store: EmailStore) -> Result<()> {
+pub async fn run_http_server(
+    email_store: EmailStore,
+    ws_tx: broadcast::Sender<String>,
+) -> Result<()> {
     // email_store を各リクエストで利用できるようにする
     let store_filter = warp::any().map(move || email_store.clone());
     // ルートパスにアクセスしたときのハンドラ
@@ -16,6 +26,7 @@ pub async fn run_http_server(email_store: EmailStore) -> Result<()> {
     // API: GET /api/emails → すべてのメールを JSON で返す
     let api_email = warp::path!("api" / "emails")
         .and(warp::get())
+        .and(warp::query::<SearchQuery>())
         .and(store_filter.clone())
         .and_then(handle_api_emails_get);
 
@@ -36,12 +47,20 @@ pub async fn run_http_server(email_store: EmailStore) -> Result<()> {
         .and(store_filter.clone())
         .and_then(handle_api_delete_batch);
 
+    let ws_route = warp::path("ws")
+        .and(warp::ws())
+        .and(with_ws_tx(ws_tx.clone()))
+        .map(|ws: warp::ws::Ws, ws_tx: broadcast::Sender<String>| {
+            ws.on_upgrade(move |socket| handle_ws_connection(socket, ws_tx))
+        });
+
     // 全てのrouteをまとめる
     let routes = index
         .or(api_email)
         .or(api_email_delete)
         .or(api_email_detail)
-        .or(api_emails_clear);
+        .or(api_emails_clear)
+        .or(ws_route);
 
     // ポート 8025 で HTTP サーバーを起動
     warp::serve(routes).run(([127, 0, 0, 1], 8025)).await;
@@ -51,37 +70,40 @@ pub async fn run_http_server(email_store: EmailStore) -> Result<()> {
 }
 /// Web UI のルートハンドラ：受信メール一覧を HTML で返す
 async fn handle_index(email_store: EmailStore) -> Result<impl warp::Reply, warp::Rejection> {
-    let store = email_store.0.lock().await;
-    let mut html = String::new();
-    html.push_str(
-        "<html><head><meta charset=\"utf-8\"><title>Local Mail Server</title></head><body>",
-    );
-    html.push_str("<h1>受信メール一覧</h1>");
-    if store.is_empty() {
-        html.push_str("<p>メールはまだ受信されていません。</p>");
-    } else {
-        for (i, email) in store.iter().enumerate() {
-            // ※ htmlescape で HTML エスケープして表示
-            html.push_str(&format!(
-                "<h2>メール {}:</h2><pre>{}</pre><hr>",
-                i + 1,
-                htmlescape::encode_minimal(email)
-            ));
-        }
+    // TODO init処理は後ほど場所を変える
+    HtmlData::init();
+    let mut html = "".to_string();
+    if let Some(html_data) = HtmlData::get_instance() {
+        html = html_data.create_mail_list_element(email_store).await;
     }
-    html.push_str("</body></html>");
     Ok(warp::reply::html(html))
 }
 
 /// API ハンドラ：GET /api/emails → すべてのメールを JSON で返す
 async fn handle_api_emails_get(
+    search_query: SearchQuery,
     email_store: EmailStore,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let store = email_store.0.lock().await;
-    let emails: Vec<Email> = store
+    let emails: Vec<EmailSummary> = store
         .iter()
         .enumerate()
-        .map(|(i, content)| Email::new_all(i, content.clone()))
+        .filter(|(_, email)| {
+            if let Some(query) = search_query.get_query() {
+                let query_lower = query.to_lowercase();
+                return email
+                    .get_subject()
+                    .as_ref()
+                    .map_or(false, |s| s.to_lowercase().contains(&query_lower))
+                    || email
+                        .get_from()
+                        .as_ref()
+                        .map_or(false, |s| s.to_lowercase().contains(&query_lower))
+                    || email.get_body().to_lowercase().contains(&query_lower);
+            }
+            true
+        })
+        .map(|(i, email)| email.convert_to_email_summary(i))
         .collect();
 
     Ok(warp::reply::json(&emails))
@@ -93,9 +115,9 @@ async fn handle_api_emails_detail(
     email_store: EmailStore,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let store = email_store.0.lock().await;
-    if let Some(content) = store.get(id) {
-        let email = Email::new_all(id, content.clone());
-        Ok(warp::reply::json(&email))
+    if let Some(email) = store.get(id) {
+        let email_summary = email.convert_to_email_summary(id);
+        Ok(warp::reply::json(&email_summary))
     } else {
         Err(warp::reject::not_found())
     }
@@ -128,4 +150,26 @@ async fn handle_api_delete_batch(
         "Clean",
         warp::http::StatusCode::OK,
     ))
+}
+
+fn with_ws_tx(
+    ws_tx: broadcast::Sender<String>,
+) -> impl Filter<Extract = (broadcast::Sender<String>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || ws_tx.clone())
+}
+
+async fn handle_ws_connection(
+    ws: warp::ws::WebSocket,
+    ws_tx: tokio::sync::broadcast::Sender<String>,
+) {
+    let mut rx = ws_tx.subscribe();
+    let (mut ws_tx_sink, _ws_rx) = ws.split();
+    tokio::spawn(async move {
+        while let Ok(msg) = rx.recv().await {
+            info!("websocket recv: {}", &msg);
+            if ws_tx_sink.send(warp::ws::Message::text(msg)).await.is_err() {
+                break;
+            }
+        }
+    });
 }

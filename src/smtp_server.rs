@@ -1,18 +1,21 @@
 use anyhow::Result;
+use base64::engine::general_purpose::NO_PAD;
 use log::{error, info};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{TcpListener, TcpStream},
+    sync::broadcast::Sender,
 };
 
 use crate::{
     auth::Auth,
     command::{self, Command},
     constants::*,
+    email::EmailData,
     EmailStore,
 };
 
-pub async fn run_stmp_server(email_store: EmailStore) -> Result<()> {
+pub async fn run_stmp_server(email_store: EmailStore, ws_tx: Sender<String>) -> Result<()> {
     let listener = TcpListener::bind("127.0.0.1:2525").await?;
     info!("SMTP Server is running on 127.0.0.1:2525 ...");
 
@@ -22,9 +25,10 @@ pub async fn run_stmp_server(email_store: EmailStore) -> Result<()> {
         info!("新しい接続先: {}", addr);
 
         let store = email_store.clone();
+        let ws_tx_clone = ws_tx.clone();
         // 接続ごとに別タスクで処理
         tokio::spawn(async move {
-            if let Err(e) = process_connection(socket, store).await {
+            if let Err(e) = process_connection(socket, store, ws_tx_clone).await {
                 error!("Error: {}", e);
             }
         });
@@ -32,7 +36,11 @@ pub async fn run_stmp_server(email_store: EmailStore) -> Result<()> {
 }
 
 /// 1 つの SMTP 接続を処理する関数
-async fn process_connection(socket: TcpStream, email_store: EmailStore) -> Result<()> {
+async fn process_connection(
+    socket: TcpStream,
+    email_store: EmailStore,
+    ws_tx: Sender<String>,
+) -> Result<()> {
     // 読み書き用にストリームを分割
     let (reader, mut writer) = socket.into_split();
     let mut reader = BufReader::new(reader);
@@ -89,17 +97,17 @@ async fn process_connection(socket: TcpStream, email_store: EmailStore) -> Resul
                 }
 
                 let email_content = datas.join("");
+                let mail_data = EmailData::new(email_content);
                 // mutexをすぐ解放するための処置
                 {
                     // 受信したメールを共有ストアに保存
                     let mut store = email_store.0.lock().await;
-                    store.push(email_content);
+                    store.push(mail_data.clone());
                 }
-
-                // info!("受信したメールデータ:");
-                // datas.iter().for_each(|data| info!("{}", data));
-
-                // mail_io::save_data(&datas).await?;
+                // WebSocket 用に新着メール通知を送信
+                let notifiaction =
+                    format!("New email received: Subject: {:?}", mail_data.get_subject());
+                let _ = ws_tx.send(notifiaction);
 
                 writer.write_all(b"250 Ok:queued\r\n").await?;
             }
