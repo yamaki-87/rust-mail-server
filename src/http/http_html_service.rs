@@ -172,7 +172,7 @@ impl HtmlData {
         );
     }
 
-    pub async fn create_mail_list_element(&self, emial_store: EmailStore) -> String {
+    pub async fn init_html(&self, emial_store: EmailStore,content:String,) -> String {
         let store = emial_store.0.lock().await;
         let mut mail_list_element = "".to_string();
         let mut mail_header_element = "".to_string();
@@ -181,8 +181,9 @@ impl HtmlData {
         for (i, email) in store.iter().enumerate() {
             mail_list_element.push_str(r#"<div class="mail-item">"#);
             mail_list_element.push_str(&format!(
-                r#"<div class="mail-summary">{:?}</div>"#,
-                email.get_subject()
+                r#"<div class="mail-summary" id={} onclick="mailItemClick(this)">{}</div>"#,
+                i,
+                email.get_subject().clone().unwrap_or_default()
             ));
             mail_list_element
                 .push_str(&format!(r#"<div class="mail-date">2025-02-06 12:34</div>"#));
@@ -210,15 +211,63 @@ impl HtmlData {
             ));
         }
 
-        let html_content_clone = self.html.clone();
-        html_content_clone
-            .replace("$mail_list", &mail_list_element)
-            .replace("$mail_header", &mail_header_element)
-            .replace("$mail_file", &mail_file_item_element)
-            .replace("$mail_body", &mail_body_element)
+        // let html_content_clone = self.html.clone();
+        // html_content_clone
+        //     .replace("$mail_list", &mail_list_element)
+        //     .replace("$mail_header", &mail_header_element)
+        //     .replace("$mail_file", &mail_file_item_element)
+        //     .replace("$mail_body", &mail_body_element)
+        content.replace("$mail_list", &mail_list_element)
     }
 
     pub fn get_html_content(&self) -> &str {
         &self.html
     }
+}
+
+pub async fn init_html(emial_store: EmailStore,content:String,) -> String {
+  let store = emial_store.0.lock().await;
+  let mut mail_list_element = "".to_string();
+  let mut mail_header_element = "".to_string();
+  let mut mail_file_item_element = "".to_string();
+  let mut mail_body_element = "".to_string();
+  for (i, email) in store.iter().enumerate() {
+      mail_list_element.push_str(&format!(r#"<div class="mail-item" id={} onclick="mailItemClick(this)">"#,i));
+      mail_list_element.push_str(&format!(
+          r#"<div class="mail-summary">{}</div>"#,
+          email.get_subject().clone().unwrap_or_default()
+      ));
+      mail_list_element
+          .push_str(&format!(r#"<div class="mail-date">2025-02-06 12:34</div>"#));
+      mail_list_element.push_str("</div>");
+
+      mail_header_element.push_str(&format!(
+          r#"<div class="subject">{:?}</div>"#,
+          email.get_subject()
+      ));
+      mail_header_element.push_str(&format!(
+          r#"<div class="sender">{:?}</div>"#,
+          email.get_from()
+      ));
+
+      for attachment in email.get_attachments() {
+          if let Some(filename) = attachment.get_filename() {
+              mail_file_item_element
+                  .push_str(&format!(r#"<div class="file-item">{}</div>"#, filename));
+          }
+      }
+
+      mail_body_element.push_str(&format!(
+          "<p>{}</p>",
+          htmlescape::encode_minimal(&email.get_body())
+      ));
+  }
+
+  // let html_content_clone = self.html.clone();
+  // html_content_clone
+  //     .replace("$mail_list", &mail_list_element)
+  //     .replace("$mail_header", &mail_header_element)
+  //     .replace("$mail_file", &mail_file_item_element)
+  //     .replace("$mail_body", &mail_body_element)
+  content.replace("$mail_list", &mail_list_element)
 }

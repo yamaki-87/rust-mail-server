@@ -1,6 +1,6 @@
 use anyhow::Result;
 use futures::{SinkExt, StreamExt};
-use log::info;
+use log::{error, info};
 use tokio::sync::broadcast;
 use warp::Filter;
 
@@ -9,7 +9,7 @@ use crate::{
     EmailStore,
 };
 
-use super::http_html_service::HtmlData;
+use super::http_html_service::{self, HtmlData};
 
 /// HTTP サーバーを起動して、受信メールを Web 画面で表示する関数
 pub async fn run_http_server(
@@ -53,6 +53,12 @@ pub async fn run_http_server(
         .map(|ws: warp::ws::Ws, ws_tx: broadcast::Sender<String>| {
             ws.on_upgrade(move |socket| handle_ws_connection(socket, ws_tx))
         });
+    
+    let cors = warp::cors()
+    .allow_any_origin()
+    .allow_methods(vec!["GET","POST","DELETE","PUT"])
+    .build();
+
 
     // 全てのrouteをまとめる
     let routes = index
@@ -60,7 +66,8 @@ pub async fn run_http_server(
         .or(api_email_delete)
         .or(api_email_detail)
         .or(api_emails_clear)
-        .or(ws_route);
+        .or(ws_route)
+        .with(cors);
 
     // ポート 8025 で HTTP サーバーを起動
     warp::serve(routes).run(([127, 0, 0, 1], 8025)).await;
@@ -70,13 +77,13 @@ pub async fn run_http_server(
 }
 /// Web UI のルートハンドラ：受信メール一覧を HTML で返す
 async fn handle_index(email_store: EmailStore) -> Result<impl warp::Reply, warp::Rejection> {
-    // TODO init処理は後ほど場所を変える
-    HtmlData::init();
-    let mut html = "".to_string();
-    if let Some(html_data) = HtmlData::get_instance() {
-        html = html_data.create_mail_list_element(email_store).await;
+    match tokio::fs::read_to_string("static/index.html").await {
+        Ok(contents) => Ok(warp::reply::html(http_html_service::init_html(email_store,contents).await)) ,
+        Err(e) => {
+            error!("handle_index error: {}",e);
+            Ok(warp::reply::html("<h1>Files not found</h1>".to_string()))
+        }
     }
-    Ok(warp::reply::html(html))
 }
 
 /// API ハンドラ：GET /api/emails → すべてのメールを JSON で返す
@@ -89,7 +96,7 @@ async fn handle_api_emails_get(
         .iter()
         .enumerate()
         .filter(|(_, email)| {
-            if let Some(query) = search_query.get_query() {
+            if let Some(query) = search_query.get_q() {
                 let query_lower = query.to_lowercase();
                 return email
                     .get_subject()

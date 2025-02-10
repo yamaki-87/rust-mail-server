@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rust Mail</title>
+  <style>
+    /* リセット */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    
+    /* コンテナ：サイドバーとコンテンツ部分を横並びに */
+    .container {
+      display: flex;
+      height: 100vh;
+    }
+    
+    /* サイドバー：メール一覧 */
+    .sidebar {
+      width: 300px;
+      background-color: #fff;
+      border-right: 1px solid #ddd;
+      overflow-y: auto;
+    }
+    
+    /* 各メール項目 */
+    .mail-item {
+      padding: 15px;
+      border-bottom: 1px solid #ddd;
+      cursor: pointer;
+      transition: background-color 0.2s ease;
+    }
+    
+    .mail-item:hover {
+      background-color: #f0f0f0;
+    }
+    
+    .mail-item.active {
+      background-color: #e0e0e0;
+    }
+    
+    .mail-summary {
+      font-size: 14px;
+      font-weight: bold;
+    }
+    
+    .mail-date {
+      font-size: 12px;
+      color: #999;
+      margin-top: 5px;
+    }
+    
+    /* メール詳細部分 */
+    .content {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    
+    .header {
+      margin-bottom: 20px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+    }
+    
+    .subject {
+      font-size: 20px;
+      margin-bottom: 10px;
+    }
+    
+    .sender {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 10px;
+    }
+
+    .file {
+      margin-bottom: 20px;
+      border-bottom: 1px solid #ddd;
+      padding-bottom: 10px;
+      display: flex;
+    }
+
+    .file-item {
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      margin: 5px 5px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background-color: #f9f9f9;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      width: 150px;
+      text-overflow: ellipsis;
+      overflow: hidden; 
+    }
+  
+    .body {
+      font-size: 16px;
+      line-height: 1.5;
+    }
+    
+    /* レスポンシブ対応：画面が狭い場合は縦並びに */
+    @media (max-width: 768px) {
+      .container {
+        flex-direction: column;
+      }
+      .sidebar {
+        width: 100%;
+        max-height: 200px;
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- サイドバー：メール一覧 -->
+    <div class="sidebar">
+        $mail_list
+    </div>
+    
+    <!-- メール詳細部分 -->
+    <div class="content">
+      <div class="header" id="header">
+            $mail_header
+      </div>
+      <div class="file" id="file">
+        $mail_file
+      </div>
+      <div class="body" id="body">
+        $mail_body
+      </div>
+    </div>
+  </div>
+    <script>
+      const ws = new WebSocket("ws://" + location.host + "/ws");
+
+      ws.onmessage = function(event) {
+        const data = event.data;
+        const emailList = document.getElementById("email-list");
+        const p = document.createElement("p");
+        p.textContent = data;
+        emailList.appendChild(p);
+      };
+
+      function clear(){
+        const bodyElement = document.getElementById("body");
+        const mailHeaderElement = document.getElementById("header");
+        const fileElement= document.getElementById("file");
+
+        bodyElement.innerHTML = "";
+        mailHeaderElement.innerHTML = "";
+        fileElement.innerHTML = "";
+
+      };
+
+      async function mailItemClick(element){
+        const mailItemId = element.id;
+
+        try{
+            const response = await fetch(`http://localhost:8025/api/emails/${mailItemId}`);
+            if(response.ok){
+                const data = await response.json();
+                console.log(data);
+
+                const bodyElement = document.getElementById("body");
+                const mailHeaderElement = document.getElementById("header");
+                const fileElement= document.getElementById("file");
+
+                // 初期化処理
+                bodyElement.innerHTML = "";
+                mailHeaderElement.innerHTML = "";
+                fileElement.innerHTML = "";
+
+                // header要素を作成
+                const mailSubjectElement = document.createElement("div");
+                mailSubjectElement.className = "subject";
+                mailSubjectElement.textContent = data.subject;
+
+                const mailSenderElement = document.createElement("div");
+                mailSenderElement.className = "sender";
+                mailSenderElement.textContent = data.from;
+
+                mailHeaderElement.appendChild(mailSubjectElement);
+                mailHeaderElement.appendChild(mailSenderElement);
+
+                // fileitem要素を作成
+                const attachments = data.attachments;
+                if (attachments.length === 0){
+
+                }else{
+                    attachments.forEach(attachment => {
+                        const fileItemElement = document.createElement("div");
+                        fileItemElement.className = "file-item";
+                        fileItemElement.textContent = attachment;
+
+                        fileElement.appendChild(fileItemElement);
+                    });
+                }
+
+                // メール本文要素を作成(body)
+                const mailBodyElement = document.createElement("div");
+                mailBodyElement.textContent = data.body;
+                bodyElement.appendChild(mailBodyElement);
+
+            }else{
+                console.error("faied");
+            }
+        }catch(error){
+            console.error("Error fetching data:",error);
+        }
+      };
+    </script>
+</body>
+</html>

@@ -22,6 +22,16 @@ message["Subject"] = subject
 
 message.attach(MIMEText(body, "plain"))
 
+
+def create_message(f,t,s,b):
+    msg = MIMEMultipart() 
+    msg["From"]  = f
+    msg["To"] = t
+    msg["Subject"] = s
+    msg.attach(MIMEText(b,"plain"))
+
+    return msg
+
 file_paths = ['file.txt', 'タイトルなし.png']
 
 for file_path in file_paths:
@@ -40,6 +50,8 @@ try:
     with smtplib.SMTP(smtp_server, port) as server:
         # メールを送信
         server.sendmail(sender_email, recipient_email, message.as_string())
+        server.sendmail("test@example.com","saitama.sf@example.com",create_message("test@example.com","saitama.sf@example.com","明日の会議について","明日の会議はなしで").as_string())
+        server.sendmail("ibariaki@example.com","iba.sf@example.com",create_message("ibariaki@example.com","iba.sf@example.com","欠席連絡","明後日から欠席します").as_string())
     print("メールが送信されました！")
 except Exception as e:
     print(f"エラーが発生しました: {e}")

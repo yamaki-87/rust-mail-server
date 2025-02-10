@@ -42,7 +42,7 @@ pub struct AttachmentData {
 
 #[derive(Deserialize, Getter)]
 pub struct SearchQuery {
-    query: Option<String>,
+    q : Option<String>,
 }
 
 impl EmailData {
