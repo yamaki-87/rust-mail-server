@@ -11,6 +11,18 @@ pub enum Command {
     Unknown,
 }
 
+pub enum WebSocketCommand {
+    Update,
+}
+
+impl Into<String> for WebSocketCommand {
+    fn into(self) -> String {
+        match self {
+            WebSocketCommand::Update => "UPDATE".into(),
+        }
+    }
+}
+
 /// 文字列からコマンドを取得
 ///
 /// ## param

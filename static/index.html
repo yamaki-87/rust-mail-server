@@ -126,7 +126,7 @@
 <body>
   <div class="container">
     <!-- サイドバー：メール一覧 -->
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
         $mail_list
     </div>
     
@@ -145,13 +145,14 @@
   </div>
     <script>
       const ws = new WebSocket("ws://" + location.host + "/ws");
+      const API_URL = "http://localhost:8025/api/emails";
 
       ws.onmessage = function(event) {
         const data = event.data;
-        const emailList = document.getElementById("email-list");
-        const p = document.createElement("p");
-        p.textContent = data;
-        emailList.appendChild(p);
+        console.log(`ws data received ${data}`);
+        if (data === "UPDATE"){
+          update();
+        }
       };
 
       function clear(){
@@ -165,11 +166,37 @@
 
       };
 
+      function update(){
+        fetch(API_URL)
+          .then(response => response.json())
+          .then(datas => {
+            console.log(datas);
+            const sidebarElement = document.getElementById("sidebar");
+            sidebarElement.innerHTML = "";
+            datas.forEach(data => { 
+              const mailItemElement = document.createElement("div");
+              mailItemElement.id = `${data.id}`;
+              mailItemElement.className = "mail-item";
+              mailItemElement.addEventListener("click",mailItemClick);
+
+              const mailSummaryElement = document.createElement("div");
+              mailSummaryElement.className = "mail-summary";
+              mailSummaryElement.textContent = data.subject;
+
+              mailItemElement.appendChild(mailSummaryElement);
+              sidebarElement.appendChild(mailItemElement);
+            });
+          })
+          .catch(e => {
+            console.error(e);
+          });
+      }
+
       async function mailItemClick(element){
         const mailItemId = element.id;
 
         try{
-            const response = await fetch(`http://localhost:8025/api/emails/${mailItemId}`);
+            const response = await fetch(`${API_URL}/${mailItemId}`);
             if(response.ok){
                 const data = await response.json();
                 console.log(data);

@@ -9,7 +9,7 @@ use tokio::{
 
 use crate::{
     auth::Auth,
-    command::{self, Command},
+    command::{self, Command, WebSocketCommand},
     constants::*,
     email::EmailData,
     EmailStore,
@@ -105,9 +105,7 @@ async fn process_connection(
                     store.push(mail_data.clone());
                 }
                 // WebSocket 用に新着メール通知を送信
-                let notifiaction =
-                    format!("New email received: Subject: {:?}", mail_data.get_subject());
-                let _ = ws_tx.send(notifiaction);
+                let _ = ws_tx.send(WebSocketCommand::Update.into());
 
                 writer.write_all(b"250 Ok:queued\r\n").await?;
             }
