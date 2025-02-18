@@ -1,5 +1,6 @@
 use std::usize;
 
+use chrono::{DateTime, Local};
 use log::{debug, error};
 use mailparse::{DispositionType, ParsedMail};
 use rumbok::{AllArgsConstructor, Getter};
@@ -13,6 +14,7 @@ pub struct Email {
 
 #[derive(Clone, Debug, Getter)]
 pub struct EmailData {
+    received_time: DateTime<Local>,
     raw: String,
     body: String,
     subject: Option<String>,
@@ -24,6 +26,7 @@ pub struct EmailData {
 #[derive(Serialize)]
 pub struct EmailSummary {
     id: usize,
+    received_time: String,
     subject: Option<String>,
     from: Option<String>,
     to: Option<String>,
@@ -42,11 +45,11 @@ pub struct AttachmentData {
 
 #[derive(Deserialize, Getter)]
 pub struct SearchQuery {
-    q : Option<String>,
+    q: Option<String>,
 }
 
 impl EmailData {
-    pub fn new(mail_content: String) -> Self {
+    pub fn new(mail_content: String, recived_time: DateTime<Local>) -> Self {
         let parsed = mailparse::parse_mail(mail_content.as_bytes());
 
         let (subject, from, to, attachments, body) = if let Ok(parsed_mail) = parsed {
@@ -56,6 +59,7 @@ impl EmailData {
         };
 
         Self {
+            received_time: recived_time,
             raw: mail_content,
             subject: subject,
             from: from,
@@ -132,6 +136,7 @@ impl EmailData {
     pub fn convert_to_email_summary(&self, i: usize) -> EmailSummary {
         EmailSummary {
             id: i,
+            received_time: self.received_time.format("%Y-%m-%d %H:%M").to_string(),
             subject: self.subject.clone(),
             from: self.from.clone(),
             to: self.to.clone(),
@@ -149,6 +154,7 @@ impl EmailData {
 impl AttachmentData {
     pub fn extract_attachement(parsed: &ParsedMail) -> Vec<AttachmentData> {
         let mut attachments = vec![];
+
         for subpart in &parsed.subparts {
             let content_dispositon = subpart.get_content_disposition();
             debug!("{:?}", &content_dispositon);

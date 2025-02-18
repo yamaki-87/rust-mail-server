@@ -1,5 +1,6 @@
 use anyhow::Result;
 use base64::engine::general_purpose::NO_PAD;
+use chrono::Local;
 use log::{error, info};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -97,7 +98,7 @@ async fn process_connection(
                 }
 
                 let email_content = datas.join("");
-                let mail_data = EmailData::new(email_content);
+                let mail_data = EmailData::new(email_content, Local::now());
                 // mutexをすぐ解放するための処置
                 {
                     // 受信したメールを共有ストアに保存

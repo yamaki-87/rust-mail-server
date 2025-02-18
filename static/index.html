@@ -108,6 +108,20 @@
       font-size: 16px;
       line-height: 1.5;
     }
+
+    .search-box {
+      padding: 10px;
+      border-bottom: 1px solid #ddd;
+      background-color: #f9f9f9;
+    }
+
+    .search-box input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
     
     /* レスポンシブ対応：画面が狭い場合は縦並びに */
     @media (max-width: 768px) {
@@ -129,25 +143,27 @@
     <div class="sidebar" id="sidebar">
         $mail_list
     </div>
-    
     <!-- メール詳細部分 -->
     <div class="content">
+      <div class="search-box">
+        <input type="text" id="search" placeholder="検索...">
+      </div>
       <div class="header" id="header">
-            $mail_header
       </div>
       <div class="file" id="file">
-        $mail_file
       </div>
       <div class="body" id="body">
-        $mail_body
       </div>
     </div>
   </div>
     <script>
       const ws = new WebSocket("ws://" + location.host + "/ws");
       const API_URL = "http://localhost:8025/api/emails";
+      document.addEventListener("DOMContentLoaded",(ev)=>{
+        update();
+      });
 
-      ws.onmessage = function(event) {
+      ws.onmessage = (event) => {
         const data = event.data;
         console.log(`ws data received ${data}`);
         if (data === "UPDATE"){
@@ -155,7 +171,7 @@
         }
       };
 
-      function clear(){
+      const clear = () => {
         const bodyElement = document.getElementById("body");
         const mailHeaderElement = document.getElementById("header");
         const fileElement= document.getElementById("file");
@@ -163,38 +179,13 @@
         bodyElement.innerHTML = "";
         mailHeaderElement.innerHTML = "";
         fileElement.innerHTML = "";
-
       };
 
-      function update(){
-        fetch(API_URL)
-          .then(response => response.json())
-          .then(datas => {
-            console.log(datas);
-            const sidebarElement = document.getElementById("sidebar");
-            sidebarElement.innerHTML = "";
-            datas.forEach(data => { 
-              const mailItemElement = document.createElement("div");
-              mailItemElement.id = `${data.id}`;
-              mailItemElement.className = "mail-item";
-              mailItemElement.addEventListener("click",mailItemClick);
-
-              const mailSummaryElement = document.createElement("div");
-              mailSummaryElement.className = "mail-summary";
-              mailSummaryElement.textContent = data.subject;
-
-              mailItemElement.appendChild(mailSummaryElement);
-              sidebarElement.appendChild(mailItemElement);
-            });
-          })
-          .catch(e => {
-            console.error(e);
-          });
-      }
-
-      async function mailItemClick(element){
-        const mailItemId = element.id;
-
+      async function mailItemClick(event){
+        const clickElement= event.currentTarget;
+        console.log(clickElement.dataset.mailId);
+        const mailItemId = clickElement.id;
+        
         try{
             const response = await fetch(`${API_URL}/${mailItemId}`);
             if(response.ok){
@@ -248,6 +239,49 @@
             console.error("Error fetching data:",error);
         }
       };
+      
+      const update = (query = null) =>{
+        const apiUrl = query ? `${API_URL}?q=${query}`:API_URL;
+        fetch(apiUrl)
+          .then(response => response.json())
+          .then(datas => {
+            console.log(datas);
+            const sidebarElement = document.getElementById("sidebar");
+            sidebarElement.innerHTML = "";
+            datas.forEach(data => { 
+              const mailItemElement = document.createElement("div");
+              mailItemElement.id = `${data.id}`;
+              mailItemElement.className = "mail-item";
+              mailItemElement.dataset.mailId = data.id;
+              mailItemElement.addEventListener("click",mailItemClick);
+
+              // 件名
+              const mailSummaryElement = document.createElement("div");
+              mailSummaryElement.className = "mail-summary";
+              mailSummaryElement.textContent = data.subject;
+
+              // 受信時間
+              const mailReceivedElement = document.createElement("div");
+              mailReceivedElement.className = "mail-date";
+              mailReceivedElement.textContent = data.received_time;
+
+              mailSummaryElement.appendChild(mailReceivedElement);
+              mailItemElement.appendChild(mailSummaryElement);
+              sidebarElement.appendChild(mailItemElement);
+            });
+          })
+          .catch(e => {
+            console.error(e);
+          });
+      }
+
+      // 検索ボタンクリック時
+      document.getElementById("search").addEventListener("keydown",(event)=>{
+        if (event.key === "Enter"){
+          const value = event.target.value;
+          update(value);
+        }
+      });
     </script>
 </body>
 </html>
