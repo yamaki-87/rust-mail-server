@@ -136,6 +136,7 @@
       }
     }
   </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.0.6/purify.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -227,9 +228,9 @@
                     });
                 }
 
-                // メール本文要素を作成(body)
+                // メール本文要素を作成(body) purifyを使いxss攻撃etcを防ぐ
                 const mailBodyElement = document.createElement("div");
-                mailBodyElement.textContent = data.body;
+                mailBodyElement.innerHTML = DOMPurify.sanitize(data.body);
                 bodyElement.appendChild(mailBodyElement);
 
             }else{

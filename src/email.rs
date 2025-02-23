@@ -6,6 +6,8 @@ use mailparse::{DispositionType, ParsedMail};
 use rumbok::{AllArgsConstructor, Getter};
 use serde::{de::IntoDeserializer, Deserialize, Serialize};
 
+use crate::constants::{TEXT_HTML, TEXT_PLAIN};
+
 #[derive(Serialize, AllArgsConstructor)]
 pub struct Email {
     id: usize,
@@ -121,7 +123,7 @@ impl EmailData {
         } else {
             for subpart in &parsed.subparts {
                 let mimetype = subpart.ctype.mimetype.to_lowercase();
-                if mimetype == "text/plain"
+                if (mimetype == TEXT_PLAIN || mimetype == TEXT_HTML)
                     && subpart.get_content_disposition().disposition == DispositionType::Inline
                 {
                     if let Ok(body) = subpart.get_body() {
