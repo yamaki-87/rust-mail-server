@@ -172,6 +172,26 @@
         }
       };
 
+      const download = (fname) => {
+        const apiUrl = `${API_URL}/download/${fname}`;
+        fetch(apiUrl)
+          .then((res) => res.blob())
+          .then((data) => {
+            const url = URL.createObjectURL(data);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = fname;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            URL.revokeObjectURL(url);
+          })
+          .catch((e) => {
+            console.error(e);
+          });
+    };
+
       const clear = () => {
         const bodyElement = document.getElementById("body");
         const mailHeaderElement = document.getElementById("header");
@@ -220,9 +240,19 @@
 
                 }else{
                     attachments.forEach(attachment => {
-                        const fileItemElement = document.createElement("div");
+                        //const fileItemElement = document.createElement("div");
+                        const fileItemElement = document.createElement("button");
                         fileItemElement.className = "file-item";
                         fileItemElement.textContent = attachment;
+
+                        //download click時
+                        fileItemElement.addEventListener("click",(event)=>{
+                          const isDownload = window.confirm(`${attachment}をダウンロードしますか？"`);
+                          if (!isDownload){
+                            return;
+                          }
+                          download(attachment);
+                        });
 
                         fileElement.appendChild(fileItemElement);
                     });

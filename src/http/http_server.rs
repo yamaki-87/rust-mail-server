@@ -1,3 +1,5 @@
+use std::io::Cursor;
+
 use anyhow::Result;
 use futures::{SinkExt, StreamExt};
 use log::{error, info};
@@ -5,7 +7,7 @@ use tokio::sync::broadcast;
 use warp::Filter;
 
 use crate::{
-    email::{EmailSummary, SearchQuery},
+    email::{AttachmentData, EmailSummary, SearchQuery},
     EmailStore,
 };
 
@@ -47,18 +49,22 @@ pub async fn run_http_server(
         .and(store_filter.clone())
         .and_then(handle_api_delete_batch);
 
+    let api_attachement_download = warp::path!("api" / "emails" / "download" / String)
+        .and(warp::get())
+        .and(store_filter.clone())
+        .and_then(handle_api_download);
+
     let ws_route = warp::path("ws")
         .and(warp::ws())
         .and(with_ws_tx(ws_tx.clone()))
         .map(|ws: warp::ws::Ws, ws_tx: broadcast::Sender<String>| {
             ws.on_upgrade(move |socket| handle_ws_connection(socket, ws_tx))
         });
-    
-    let cors = warp::cors()
-    .allow_any_origin()
-    .allow_methods(vec!["GET","POST","DELETE","PUT"])
-    .build();
 
+    let cors = warp::cors()
+        .allow_any_origin()
+        .allow_methods(vec!["GET", "POST", "DELETE", "PUT"])
+        .build();
 
     // 全てのrouteをまとめる
     let routes = index
@@ -66,6 +72,7 @@ pub async fn run_http_server(
         .or(api_email_delete)
         .or(api_email_detail)
         .or(api_emails_clear)
+        .or(api_attachement_download)
         .or(ws_route)
         .with(cors);
 
@@ -78,9 +85,11 @@ pub async fn run_http_server(
 /// Web UI のルートハンドラ：受信メール一覧を HTML で返す
 async fn handle_index(email_store: EmailStore) -> Result<impl warp::Reply, warp::Rejection> {
     match tokio::fs::read_to_string("static/index.html").await {
-        Ok(contents) => Ok(warp::reply::html(http_html_service::init_html(email_store,contents).await)) ,
+        Ok(contents) => Ok(warp::reply::html(
+            http_html_service::init_html(email_store, contents).await,
+        )),
         Err(e) => {
-            error!("handle_index error: {}",e);
+            error!("handle_index error: {}", e);
             Ok(warp::reply::html("<h1>Files not found</h1>".to_string()))
         }
     }
@@ -157,6 +166,44 @@ async fn handle_api_delete_batch(
         "Clean",
         warp::http::StatusCode::OK,
     ))
+}
+
+/// API ハンドラ：GET /api/emails/download/{ファイル名} → ファイルをdownloadする
+async fn handle_api_download(
+    filename: String,
+    email_store: EmailStore,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    use warp::http::header::CONTENT_DISPOSITION;
+    let store = email_store.0.lock().await;
+    let attachments = store
+        .iter()
+        .map(|e| e.get_attachments())
+        .flatten()
+        .collect::<Vec<&AttachmentData>>();
+
+    let target_download_file = attachments.iter().find(|attachment| {
+        if let Some(target_filename) = attachment.get_filename() {
+            return target_filename == &filename;
+        } else {
+            return false;
+        }
+    });
+
+    if let Some(download_file) = target_download_file {
+        let data_arc = download_file.get_data_arc();
+        // TODO 内部データcloneはファイルサイズが巨大な場合負荷が大きい
+        let body = warp::hyper::Body::from(data_arc.as_ref().clone());
+        Ok(warp::reply::with_header(
+            warp::reply::Response::new(body),
+            CONTENT_DISPOSITION,
+            format!(
+                "attachment; filename=\"{}\"",
+                download_file.get_filename().as_ref().unwrap()
+            ),
+        ))
+    } else {
+        Err(warp::reject::not_found())
+    }
 }
 
 fn with_ws_tx(

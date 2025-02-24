@@ -1,4 +1,4 @@
-use std::usize;
+use std::{sync::Arc, usize};
 
 use chrono::{DateTime, Local};
 use log::{debug, error};
@@ -42,7 +42,13 @@ pub struct EmailSummary {
 pub struct AttachmentData {
     filename: Option<String>,
     content_type: String,
-    data: String,
+    data: Arc<Vec<u8>>,
+}
+
+impl AttachmentData {
+    pub fn get_data_arc(&self) -> Arc<Vec<u8>> {
+        Arc::clone(&self.data)
+    }
 }
 
 #[derive(Deserialize, Getter)]
@@ -166,11 +172,10 @@ impl AttachmentData {
                     let filename = content_dispositon.params.get("filename").cloned();
 
                     if let Ok(body) = subpart.get_body_raw() {
-                        let data_b64 = base64::encode(&body);
                         attachments.push(Self {
                             filename: filename,
                             content_type: subpart.ctype.mimetype.clone(),
-                            data: data_b64,
+                            data: Arc::new(body),
                         });
                     }
                 }
