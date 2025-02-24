@@ -8,6 +8,7 @@ pub enum Command {
     Data,
     Quit,
     AuthPlain,
+    StartTls,
     Unknown,
 }
 
@@ -51,6 +52,8 @@ pub fn get_command_from_str(input: &str) -> Command {
         return Data;
     } else if input.starts_with(AUTH_PLAIN) {
         return AuthPlain;
+    } else if input.starts_with(STARTTLS) {
+        return StartTls;
     }
 
     return Unknown;

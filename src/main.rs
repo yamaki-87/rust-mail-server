@@ -6,9 +6,11 @@ use env_logger::Builder;
 use http::http_server;
 use smtp_server::run_stmp_server;
 use tokio::sync::{broadcast, Mutex};
+use tokio_rustls::TlsAcceptor;
 // https://qiita.com/simonritchie/items/87d3743e138763ff3e85
 mod auth;
 mod command;
+mod config;
 mod constants;
 mod email;
 mod http;
@@ -22,6 +24,10 @@ struct EmailStore(Arc<Mutex<Vec<EmailData>>>);
 async fn main() -> Result<()> {
     logger_init();
 
+    // tls設定
+    let tls_config = config::load_tls_config();
+    let acceptor = tls_config.map(|tls| TlsAcceptor::from(tls));
+
     // 受信メール保存する共通ストア(メモリー上)
     let email_store = EmailStore(Arc::new(Mutex::new(Vec::new())));
 
@@ -30,7 +36,8 @@ async fn main() -> Result<()> {
     // SMTP サーバー（ポート 2525）を起動
     let ws_tx_clone = ws_tx.clone();
     let smtp_sore = email_store.clone();
-    let smtp_server = tokio::spawn(async move { run_stmp_server(smtp_sore, ws_tx_clone).await });
+    let smtp_server =
+        tokio::spawn(async move { run_stmp_server(smtp_sore, ws_tx_clone, acceptor).await });
 
     // HTTP サーバー（ポート 8025）を起動（Web UI 用）
     let http_store = email_store.clone();

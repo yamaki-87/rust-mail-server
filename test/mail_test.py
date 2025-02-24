@@ -13,6 +13,7 @@ port = 2525
 parser = argparse.ArgumentParser(description="コマンドライン引数で処理変更")
 
 parser.add_argument("-t","--html",action="store_true",help="html形式でメールを送る")
+parser.add_argument("-s","--tls",action="store_true",help="TLS通信でメールを送る")
 
 sender_email = "sender@example.com"
 recipient_email = "recipient@example.com" 
@@ -27,15 +28,32 @@ message["Subject"] = subject
 
 message.attach(MIMEText(body, "plain"))
 
-
 def create_message(f,t,s,b,h="plain"):
     msg = MIMEMultipart() 
     msg["From"]  = f
     msg["To"] = t
     msg["Subject"] = s
-    msg.attach(MIMEText(b,h))
+    msg.attach(MIMEText(b,h,'utf-8'))
 
     return msg
+
+def send_email_with_tls():
+    from_addr = 'sender@TLSexample.com'
+    to_addr = 'recipient@TLSexample.com'
+    subject = '件名TLS TEST'
+    body = 'これは TLS を使用した安全なメール送信のサンプルです。'
+    msg = create_message(from_addr,to_addr,subject,body)
+    try:
+        # SMTP サーバーに接続し、TLS を開始
+        with smtplib.SMTP(smtp_server, port) as server:
+            server.ehlo()           # サーバーとの通信を初期化
+            server.starttls()       # TLS で通信を暗号化
+            server.ehlo()           # TLS 開始後に再度初期化
+            server.sendmail(from_addr,to_addr,subject,msg)
+            print("メールが送信されました！")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
 
 file_paths = ['file.txt', 'タイトルなし.png']
 
@@ -58,6 +76,8 @@ def main():
             print("メールが送信されました！")
         except Exception as e:
             print(f"エラーが発生しました: {e}")
+    elif args.tls:
+        send_email_with_tls()
     else:
         for file_path in file_paths:
             if os.path.exists(file_path):
