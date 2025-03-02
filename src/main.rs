@@ -16,6 +16,7 @@ mod email;
 mod http;
 mod mail_io;
 mod smtp_server;
+mod util;
 /// 共通のメールアドレスの型
 #[derive(Clone)]
 struct EmailStore(Arc<Mutex<Vec<EmailData>>>);

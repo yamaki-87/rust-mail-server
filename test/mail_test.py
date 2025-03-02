@@ -42,14 +42,16 @@ def send_email_with_tls():
     to_addr = 'recipient@TLSexample.com'
     subject = '件名TLS TEST'
     body = 'これは TLS を使用した安全なメール送信のサンプルです。'
-    msg = create_message(from_addr,to_addr,subject,body)
+    msg = create_message(from_addr,to_addr,subject,body).as_string()
     try:
         # SMTP サーバーに接続し、TLS を開始
         with smtplib.SMTP(smtp_server, port) as server:
+            server.set_debuglevel(1)
             server.ehlo()           # サーバーとの通信を初期化
             server.starttls()       # TLS で通信を暗号化
             server.ehlo()           # TLS 開始後に再度初期化
-            server.sendmail(from_addr,to_addr,subject,msg)
+            server.login("hoge","hageS")
+            server.sendmail(from_addr,to_addr,msg)
             print("メールが送信されました！")
     except Exception as e:
         import traceback
@@ -94,6 +96,7 @@ def main():
             # ローカルSMTPサーバーに接続（認証なし）
             with smtplib.SMTP(smtp_server, port) as server:
                 # メールを送信
+                server.set_debuglevel(1)
                 server.sendmail(sender_email, recipient_email, message.as_string())
                 server.sendmail("test@example.com","saitama.sf@example.com",create_message("test@example.com","saitama.sf@example.com","明日の会議について","明日の会議はなしで").as_string())
                 server.sendmail("ibariaki@example.com","iba.sf@example.com",create_message("ibariaki@example.com","iba.sf@example.com","欠席連絡","明後日から欠席します").as_string())

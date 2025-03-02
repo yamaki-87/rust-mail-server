@@ -15,6 +15,7 @@ use crate::{
     command::{self, Command, WebSocketCommand},
     constants::*,
     email::EmailData,
+    util::base64,
     EmailStore,
 };
 
@@ -83,7 +84,7 @@ async fn process_connection(
                 info!("[EHLO] command is {}", &command);
                 reader
                     .get_mut()
-                    .write_all(b"250-MyRustSMTP\r\n250-STARTTLS\r\n250 AUTH PLAIN LOGIN\r\n")
+                    .write_all(b"250-MyRustSMTP\r\n250-STARTTLS\r\n250 AUTH LOGIN PLAIN\r\n")
                     .await?;
             }
             Command::StartTls => {
@@ -150,8 +151,49 @@ async fn process_connection(
             }
             Command::AuthPlain => {
                 // AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=   <-- 「\0user\0password」を base64 エンコードした文字列
-                let message_bytes = auth.authenticated(&command);
+                let message_bytes = auth.parse_plain_credentials(&line);
                 reader.get_mut().write_all(message_bytes).await?;
+            }
+            Command::AuthLogin => {
+                // Username base64
+                reader.get_mut().write_all(b"334 VXNlcm5hbWU6\r\n").await?;
+                line.clear();
+                reader.read_line(&mut line).await?;
+                let username = match base64::decode(&line) {
+                    Ok(usr) => usr,
+                    Err(e) => {
+                        error!("{}", e);
+                        reader
+                            .get_mut()
+                            .write_all(INVALID_BASE64_MESSAGE_BYTES)
+                            .await?;
+                        continue;
+                    }
+                };
+
+                line.clear();
+                reader.get_mut().write_all(b"334 UGFzc3dvcmQ6\r\n").await?;
+                reader.read_line(&mut line).await?;
+                let password = match base64::decode(&line) {
+                    Ok(usr) => usr,
+                    Err(e) => {
+                        error!("{}", e);
+                        reader
+                            .get_mut()
+                            .write_all(INVALID_BASE64_MESSAGE_BYTES)
+                            .await?;
+                        continue;
+                    }
+                };
+
+                info!("username:{} password:{}", &username, &password);
+                auth.set_authenticated(true);
+                auth.set_password(password);
+                auth.set_username(username);
+                reader
+                    .get_mut()
+                    .write_all(b"235 Authentication successful\r\n")
+                    .await?;
             }
             Command::Unknown => {
                 reader
@@ -173,8 +215,9 @@ async fn handle_tls_client(
     let (mut reader, mut writer) = tokio::io::split(socket);
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
-
-    send_tls(&mut writer, b"220 Rust SMTP(TLS) Server Ready\r\n").await?;
+    // 認証状態を保持する
+    let mut auth = Auth::default();
+    //send_tls(&mut writer, b"220 Rust SMTP(TLS) Server Ready\r\n").await?;
     loop {
         line.clear();
         let n = read_tls(&mut reader, &mut line).await?;
@@ -189,7 +232,7 @@ async fn handle_tls_client(
                 //writer.write_all(b"250 Hello\r\n").await?;
                 send_tls(
                     &mut writer,
-                    b"250 MyRustSMTP (TLS)\r\n250 AUTH PLAIN LOGIN\r\n",
+                    b"250-MyRustSMTP (TLS)\r\n250 AUTH LOGIN PLAIN\r\n",
                 )
                 .await?;
             }
@@ -240,10 +283,11 @@ async fn handle_tls_client(
                 break;
             }
             Command::AuthPlain => {
-                // // AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=   <-- 「\0user\0password」を base64 エンコードした文字列
-                // let message_bytes = auth.authenticated(&command);
-                // writer.write_all(message_bytes).await?;
+                // AUTH PLAIN AHVzZXIAcGFzc3dvcmQ=   <-- 「\0user\0password」を base64 エンコードした文字列
+                let message_bytes = auth.parse_plain_credentials(&line);
+                send_tls(&mut writer, message_bytes).await?;
             }
+            Command::AuthLogin => {}
             Command::Unknown => {
                 send_tls(&mut writer, b"500 Unrecongnized command\r\n").await?;
             }
